@@ -1,0 +1,10 @@
+# requirements.txt
+
+# Example Python dependencies
+flask
+requests
+pyodbc
+python-dotenv
+flask-cors
+
+# Add any other dependencies your backend uses
