@@ -1,0 +1,90 @@
+.container {
+  max-width: 900px;
+  margin: 20px 0; /* Removed auto centering */
+  padding: 20px;
+  font-family: "Segoe UI", Arial, sans-serif;
+  background: #ffffff;
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.title {
+  font-size: 26px;
+  font-weight: bold;
+  margin-bottom: 20px;
+  color: #2c3e50;
+  text-align: left; /* Left-align title */
+}
+
+.search-box {
+  width: 300px; /* Fixed width for consistency */
+  padding: 10px;
+  margin-bottom: 15px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 16px;
+  outline: none;
+  display: block; /* Ensure it aligns left */
+}
+
+.search-box:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 5px rgba(52, 152, 219, 0.5);
+}
+
+.table-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+  background: #f9f9f9;
+  padding: 10px;
+  width: 100%; /* Ensure full width */
+}
+
+.employee-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.employee-table th {
+  background-color: #3498db;
+  color: white;
+  padding: 12px;
+  text-align: left; /* Left-align headers */
+  border-bottom: 2px solid #2980b9;
+}
+
+.employee-table td {
+  padding: 12px;
+  border-bottom: 1px solid #ddd;
+  color: #333;
+  text-align: left; /* Ensure text is left-aligned */
+}
+
+.employee-table tr:hover {
+  background-color: #f1f1f1;
+}
+
+.no-data {
+  text-align: left; /* Align 'No employees found' text to the left */
+  font-weight: bold;
+  padding: 15px;
+  color: #888;
+}
+
+.remove-button {
+  background-color: #e74c3c;
+  color: white;
+  border: none;
+  padding: 8px 12px;
+  font-size: 14px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.remove-button:hover {
+  background-color: #c0392b;
+}

@@ -1,0 +1,103 @@
+/* Shift content more to the left */
+.container {
+  max-width: 800px;
+  margin-left: 50px; /* Move content left */
+  padding: 20px;
+}
+
+/* Title styling */
+.title {
+  font-size: 24px;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
+/* Input container for date selection */
+.input-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+/* Date input styling */
+.date-input {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  font-size: 14px;
+  width: 160px;
+}
+
+/* Fetch button styling */
+.fetch-button {
+  background-color: #007bff;
+  color: white;
+  padding: 10px 15px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.fetch-button:hover {
+  background-color: #0056b3;
+}
+
+/* Table container */
+.table-container {
+  max-height: 400px; /* Set a fixed height for scrolling */
+  overflow-y: auto;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow for a polished look */
+}
+
+.attendance-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.attendance-table th {
+  background-color: #007bff; /* Blue background */
+  color: white; /* White text */
+  font-weight: bold;
+  padding: 12px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.attendance-table td {
+  padding: 10px;
+  border: 1px solid #ddd; /* Clearer cell borders */
+}
+
+.attendance-table tbody tr:hover {
+  background-color: #f5f5f5; /* Light gray hover effect */
+}
+
+
+
+/* Status color coding */
+.present {
+  color: green;
+  font-weight: bold;
+}
+
+.absent {
+  color: red;
+  font-weight: bold;
+}
+
+.late {
+  color: orange;
+  font-weight: bold;
+}
+
+.no-data {
+  font-size: 16px;
+  color: gray;
+  margin-top: 10px;
+}
