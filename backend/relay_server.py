@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 import base64
 import time
 from flask_cors import CORS
+import hashlib
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
@@ -23,6 +24,16 @@ def get_conn():
     return pyodbc.connect(
         f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password}'
     )
+
+def hash_password(password, salt):
+    # Convert the password to bytes and combine with salt
+    salted = (password + salt).encode('utf-8')
+    # Create SHA256 hash
+    hasher = hashlib.sha256()
+    hasher.update(salted)
+    # Get the hexadecimal representation and convert to uppercase
+    hashed = '0x' + hasher.hexdigest().upper()
+    return hashed
 
 # --- /api/machines endpoints ---
 
@@ -68,6 +79,18 @@ def search_machine_employees(id):
         results = [dict(zip(columns, row)) for row in cursor.fetchall()]
         conn.close()
         return jsonify(results)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/machine-name', methods=['GET'])
+def get_machine_name():
+    try:
+        # Adjust the path as needed
+        file_path = 'D:/Mname.txt'
+        with open(file_path, 'r') as f:
+            name = f.read().strip()
+        return jsonify({"machine_name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -316,6 +339,96 @@ def get_machine_by_id(id):
         return jsonify(results)
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/clock-status', methods=['POST'])
+def update_clock_status():
+    try:
+        data = request.get_json()
+        status = data.get('status')  # 'CLOCK IN' or 'CLOCK OUT'
+        machine_id = data.get('machine_id')
+        
+        if not status or not machine_id:
+            return jsonify({"error": "Missing status or machine_id"}), 400
+            
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE machinestat SET CLOCKSTAT = ? WHERE machine_id = ?",
+            (status, machine_id)
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"message": f"Clock status updated to {status}"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/clock-status/<machine_id>', methods=['GET'])
+def get_clock_status(machine_id):
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT CLOCKSTAT FROM machinestat WHERE machine_id = ?",
+            (machine_id,)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        
+        if row:
+            return jsonify({"status": row[0] or "NO STATUS"})
+        return jsonify({"status": "NO STATUS"})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/auth/login', methods=['POST'])
+def authenticate_user():
+    try:
+        data = request.get_json()
+        username = data.get('username')
+        password = data.get('password')
+
+        if not username or not password:
+            return jsonify({"error": "Username and password are required"}), 400
+
+        # Check if username starts with MISW or MCNB
+        if not (username.startswith('MISW') or username.startswith('MCNB')):
+            return jsonify({"error": "Unauthorized access"}), 401
+
+        conn = get_conn()
+        cursor = conn.cursor()
+        
+        # Query the HELPDESK_USER table
+        cursor.execute(
+            "SELECT USERNAME, PASSWORD, SALT, LVL FROM APPVB5225.HOCK_APP_VB.[dbo].[HELPDESK_USER] WHERE USERNAME = ?",
+            (username,)
+        )
+        
+        user = cursor.fetchone()
+        conn.close()
+
+        if not user:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+        stored_hash = user[1]  # PASSWORD column (stored as 0x...)
+        salt = user[2]        # SALT column
+        level = user[3]       # LVL column
+
+        # Hash the provided password with the stored salt
+        computed_hash = hash_password(password, salt)
+
+        # Compare the computed hash with stored hash
+        if computed_hash == stored_hash:
+            return jsonify({
+                "success": True,
+                "username": username,
+                "level": level
+            })
+        else:
+            return jsonify({"error": "Invalid credentials"}), 401
+
+    except Exception as e:
+        print(f"Authentication error: {str(e)}")  # For debugging
+        return jsonify({"error": "Authentication failed"}), 500
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
