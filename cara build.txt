@@ -1,0 +1,2 @@
+docker run -p 3000:80 hock-att-frontend
+docker run -d -p 5000:5000 -v D:/Mname.txt:/app/Mname.txt hock-att-backend
