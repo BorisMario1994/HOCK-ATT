@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build:
@@ -7,9 +5,10 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5000:5000"
+    volumes:
+      - D:/Mname.txt:/app/Mname.txt
     restart: unless-stopped
     environment:
-      # example environment variables, customize as needed
       - ASPNETCORE_ENVIRONMENT=Development
 
   frontend:
@@ -17,7 +16,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
-      - "80:80"
+      - "3000:80"
     restart: unless-stopped
     depends_on:
       - backend

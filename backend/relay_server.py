@@ -83,16 +83,29 @@ def search_machine_employees(id):
         return jsonify({"error": str(e)}), 500
 
 
+# @app.route('/api/machine-name', methods=['GET'])
+# def get_machine_name():
+#     try:
+#         # Adjust the path as needed
+#         file_path = 'D:/Mname.txt'
+#         with open(file_path, 'r') as f:
+#             name = f.read().strip()
+#         return jsonify({"machine_name": name})
+#     except Exception as e:
+#         return jsonify({"error": str(e)}), 500
+
+
 @app.route('/api/machine-name', methods=['GET'])
 def get_machine_name():
     try:
         # Adjust the path as needed
-        file_path = 'D:/Mname.txt'
+        file_path = '/app/Mname.txt'
         with open(file_path, 'r') as f:
             name = f.read().strip()
         return jsonify({"machine_name": name})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
 
 @app.route('/api/machines/<id>/employees', methods=['GET'])
 def get_machine_employees(id):
