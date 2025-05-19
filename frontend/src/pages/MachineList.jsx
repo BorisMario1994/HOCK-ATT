@@ -255,6 +255,12 @@ const MachineList = () => {
                 placeholder="Enter password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault(); // Prevent default form submission
+                    handleAuth();
+                  }
+                }}
                 style={{ 
                   width: '95%', 
                   padding: '8px', 
