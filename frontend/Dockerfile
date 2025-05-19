@@ -1,23 +1,30 @@
-# Use official Node.js image as the base
-FROM node:18-alpine
+# Stage 1: Build the frontend assets
+FROM node:18-alpine AS build
 
-# Set working directory
+# Set working directory inside container
 WORKDIR /app
 
-# Copy package.json and package-lock.json
-COPY package*.json ./
-
-# Install dependencies
+# Copy package files and install dependencies
+COPY package.json package-lock.json* ./
 RUN npm install
 
-# Copy the rest of the frontend code
+# Copy the rest of your frontend source code
 COPY . .
 
-# Build the frontend (uncomment if you have a build step)
+# Build the production-ready static files
 RUN npm run build
 
-# Expose the port your frontend runs on (adjust as needed)
-EXPOSE 3000
+# Stage 2: Serve the static files using nginx
+FROM nginx:stable-alpine
 
-# Start the frontend (adjust as needed)
-CMD ["npm", "start"] 
+# Remove default nginx static assets
+RUN rm -rf /usr/share/nginx/html/*
+
+# Copy built files from Stage 1
+COPY --from=build /app/build /usr/share/nginx/html
+
+# Expose port 80
+EXPOSE 80
+
+# Start nginx server
+CMD ["nginx", "-g", "daemon off;"]

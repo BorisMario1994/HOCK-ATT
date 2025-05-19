@@ -1,17 +1,23 @@
 version: '3.8'
+
 services:
   backend:
-    build: ./backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     ports:
       - "5000:5000"
-    volumes:
-      - ./backend:/app
-    depends_on:
-      - frontend
+    restart: unless-stopped
+    environment:
+      # example environment variables, customize as needed
+      - ASPNETCORE_ENVIRONMENT=Development
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "3000:3000"
-    volumes:
-      - ./frontend:/app
+      - "80:80"
+    restart: unless-stopped
+    depends_on:
+      - backend
