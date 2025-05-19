@@ -202,6 +202,8 @@ def get_maxslot():
 def get_employee_id():
     machine_id = request.args.get('machine_id')
     slot = request.args.get('slot')
+    print(machine_id)
+    print(slot)
     if not machine_id or not slot:
         return jsonify({"error": "Missing required parameters"}), 400
     try:
@@ -397,38 +399,94 @@ def authenticate_user():
         conn = get_conn()
         cursor = conn.cursor()
         
-        # Query the HELPDESK_USER table
+        # Query the HELPDESK_USER table with password check in SQL
         cursor.execute(
-            "SELECT USERNAME, PASSWORD, SALT, LVL FROM APPVB5225.HOCK_APP_VB.[dbo].[HELPDESK_USER] WHERE USERNAME = ?",
-            (username,)
+            """
+            SELECT USERNAME, SUPERIOR
+            FROM APPVB5225.HOCK_APP_VB.[dbo].[HELPDESK_USER]
+            WHERE USERNAME = ?
+              AND PASSWORD = HASHBYTES(
+                    'SHA2_256',
+                    CAST(
+                        CONCAT(
+                            CAST(SUBSTRING(SALT, 1, 5) AS VARCHAR(50)), 
+                            CAST(? AS VARCHAR(50)), 
+                            CAST(SUBSTRING(SALT, 6, 10) AS VARCHAR(50))
+                        ) AS VARCHAR(MAX)
+                    )
+                )
+            """,
+            (username, password)
         )
-        
+
         user = cursor.fetchone()
         conn.close()
 
         if not user:
             return jsonify({"error": "Invalid credentials"}), 401
 
-        stored_hash = user[1]  # PASSWORD column (stored as 0x...)
-        salt = user[2]        # SALT column
-        level = user[3]       # LVL column
-
-        # Hash the provided password with the stored salt
-        computed_hash = hash_password(password, salt)
-
-        # Compare the computed hash with stored hash
-        if computed_hash == stored_hash:
-            return jsonify({
-                "success": True,
-                "username": username,
-                "level": level
-            })
-        else:
-            return jsonify({"error": "Invalid credentials"}), 401
+        # user[0] = USERNAME, user[1] = SUPERIOR
+        return jsonify({
+            "success": True,
+            "username": user[0],
+            "superior": user[1]
+        })
 
     except Exception as e:
         print(f"Authentication error: {str(e)}")  # For debugging
         return jsonify({"error": "Authentication failed"}), 500
 
+@app.route('/api/fingerprint/newattendance', methods=['GET'])
+def get_new_attendance():
+    machine_id = request.args.get('machine_id')
+    if not machine_id:
+        return jsonify({"error": "Missing machine_id parameter"}), 400
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT TOP 1 rownum,employee_id, machine_id,status, registered_at
+            FROM employees_attendance
+            WHERE machine_id = ? AND seen_at IS NULL
+            ORDER BY registered_at DESC
+            """,
+            machine_id
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return jsonify({
+                "rownum" : row[0],
+                "employee_id": row[1],
+                "machine_id":row[2],
+                "status": row[3],
+                "registered_at": row[4]
+            })
+        else:
+            return jsonify({})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/api/fingerprint/attendance/seen', methods=['POST'])
+def mark_attendance_seen():
+    data = request.get_json()
+    rownum = data.get('rownum')
+    print(rownum)
+    if not rownum:
+        return jsonify({"error": "Missing rownum"}), 400
+    try:
+        conn = get_conn()
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE employees_attendance SET seen_at = GETDATE() WHERE rownum = ?",
+            rownum
+        )
+        conn.commit()
+        conn.close()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+       app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,35 +1,33 @@
-# Use an official Python image as the base
-FROM python:3.11-slim
+FROM python:3.11
 
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (if needed for Python packages)
-RUN apt-get update && apt-get install -y \
-    build-essential \
+# Install required tools and dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    gnupg \
+    apt-transport-https \
+    ca-certificates \
+    unixodbc \
+    unixodbc-dev \
+    gcc \
+    g++ \
+    && curl https://packages.microsoft.com/keys/microsoft.asc | apt-key add - \
+    && curl https://packages.microsoft.com/config/debian/11/prod.list > /etc/apt/sources.list.d/mssql-release.list \
+    && apt-get update \
+    && ACCEPT_EULA=Y apt-get install -y msodbcsql17 \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy Python requirements if you have them (uncomment if requirements.txt exists)
-# COPY requirements.txt .
-# RUN pip install --no-cache-dir -r requirements.txt
-
-# Copy the rest of the backend code
+# Copy your backend code
 COPY . .
 
-# Install Node.js (if you need to run server.js or use npm for any reason)
-RUN apt-get update && apt-get install -y curl && \
-    curl -fsSL https://deb.nodesource.com/setup_18.x | bash - && \
-    apt-get install -y nodejs && \
-    rm -rf /var/lib/apt/lists/*
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install Node.js dependencies if needed
-# RUN npm install
-
-# Expose the port your backend runs on (adjust as needed)
+# Expose the port
 EXPOSE 5000
 
-# Set the default command (adjust as needed: python, node, etc.)
-# For Python relay_server.py:
+# Run your app
 CMD ["python", "relay_server.py"]
-# Or, if you want to run server.js with Node.js:
-# CMD ["node", "server.js"] 

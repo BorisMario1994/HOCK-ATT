@@ -16,6 +16,8 @@ const MachineList = () => {
   const [password, setPassword] = React.useState("");
   const [machines, setMachines] = React.useState([]);
   const [authError, setAuthError] = React.useState("");
+  const [attendancePopup, setAttendancePopup] = React.useState(null);
+  const attendancePopupTimeout = React.useRef(null);
 
   // Check for existing auth state and return path
   React.useEffect(() => {
@@ -157,6 +159,44 @@ const MachineList = () => {
       console.error("Error fetching machines:", error);
     }
   };
+
+  // Poll for new attendance every 2 seconds
+  React.useEffect(() => {
+    if (machineName === "Unknown Machine" || machineName === "Loading...") return;
+    const pollAttendance = async () => {
+      try {
+        const response = await fetch(`http://localhost:5000/api/fingerprint/newattendance?machine_id=${machineName}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data && data.employee_id && data.status && data.rownum) {
+
+            setAttendancePopup({
+              employee_id: data.employee_id,
+              status: data.status,
+              registered_at: data.registered_at
+            });
+            // Mark as seen
+
+            fetch('http://localhost:5000/api/fingerprint/attendance/seen', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ rownum: data.rownum })
+            });
+            // Auto-hide popup after 4 seconds
+            if (attendancePopupTimeout.current) clearTimeout(attendancePopupTimeout.current);
+            attendancePopupTimeout.current = setTimeout(() => setAttendancePopup(null), 4000);
+          }
+        }
+      } catch (error) {
+        // Ignore polling errors
+      }
+    };
+    const interval = setInterval(pollAttendance, 2000);
+    return () => {
+      clearInterval(interval);
+      if (attendancePopupTimeout.current) clearTimeout(attendancePopupTimeout.current);
+    };
+  }, [machineName]);
 
   return (
     <div>
@@ -305,7 +345,7 @@ const MachineList = () => {
                     <td style={{ padding: '12px' }}>{machine.machine_id}</td>
                     <td style={{ padding: '12px' }}>
                       {machine.last_active
-                        ? new Date(machine.last_active).toLocaleString()
+                        ? machine.last_active.replace("T", " ").replace("Z", "")
                         : "Never Active"}
                     </td>
                     <td style={{ padding: '12px' }}>
@@ -408,6 +448,34 @@ const MachineList = () => {
           </div>
         </Card>
       </div>
+
+      {attendancePopup && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.4)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 2000
+        }}>
+          <Card style={{ padding: '32px', minWidth: '320px', backgroundColor: 'white', textAlign: 'center' }}>
+            <h2 style={{ marginBottom: 16 }}>Attendance Notification</h2>
+            <div style={{ fontSize: 18, marginBottom: 12 }}>
+              Employee <b>{attendancePopup.employee_id}</b> successfully <b>{attendancePopup.status}</b>.<br/>
+              <span style={{ fontSize: 14, color: '#888' }}>
+                {attendancePopup.registered_at ? `Time: ${attendancePopup.registered_at.replace("T", " ").replace("Z", "")}` : null}
+              </span>
+            </div>
+            <Button onClick={() => setAttendancePopup(null)} style={{ backgroundColor: '#2196F3', color: 'white', marginTop: 8 }}>
+              Close
+            </Button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 };
