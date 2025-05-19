@@ -1,0 +1,496 @@
+#include <ESP8266HTTPClient.h>
+#include <ESP8266WiFi.h>
+#include <Adafruit_Fingerprint.h>
+#include <SoftwareSerial.h>
+#include <ArduinoJson.h>
+#include "base64.hpp"
+
+
+//#include <Wire.h>
+//#include <LiquidCrystal_I2C.h>
+
+// Define new I2C pins
+//#define I2C_SDA 12  // D6 (GPIO12)
+//#define I2C_SCL 14  // D5 (GPIO14)
+
+//LiquidCrystal_I2C lcd(0x27, 16, 2); // I2C address 0x27
+
+
+#define LED1 5     // GREEN LED - Status Indicator
+#define LED2 4     // RED LED - Error Indicator
+#define RX_PIN 13  // ESP8266 GPIO13 (D7) -> Fingerprint TX
+#define TX_PIN 15  // ESP8266 GPIO15 (D8) -> Fingerprint RX
+SoftwareSerial mySerial(RX_PIN, TX_PIN);
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+
+//const char* ssid = "iFT_ITC";
+//const char* password = "Ifortew1f1208";
+
+const char* ssid = "LA_ITC";
+const char* password = "lintasartaw1f1207";
+
+String Server = "http://192.168.0.100:5000/api/machines/";
+String Server2 = "http://192.168.0.100:5000/api/fingerprint/";
+String GetMachineId = "http://192.168.0.100:5000/api/machine-name";
+String machine_id = "";
+String ClockStatus = "";
+String employeeid = "";
+int slot = 1;
+bool isMachineReadyToReg = false;  // Global variable to track machine status
+bool isMachineReadyToDel = false;  // Global variable to track machine status
+
+int idToDel = 0;
+WiFiClient client;
+HTTPClient http;
+
+void setup() {
+  pinMode(LED1, OUTPUT);
+  pinMode(LED2, OUTPUT);
+  Serial.begin(115200);
+  mySerial.begin(57600);
+  finger.begin(57600);
+
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to WiFi");
+
+  if (finger.verifyPassword()) {
+    Serial.println("Fingerprint sensor detected!");
+  } else {
+    Serial.println("Fingerprint sensor not found!");
+    while (1)
+      ;
+  }
+  MachineName();
+ //deleteAllFingerprints();
+}
+
+void sendPUTRequest() {
+  if (WiFi.status() == WL_CONNECTED) {
+    //digitalWrite(LED1, HIGH);
+    //digitalWrite(LED2, LOW);
+  
+    String requestURL = Server + machine_id;  // Append machine ID to URL
+      Serial.println(requestURL);
+    Serial.print("HTTP Response Code: ");
+    http.begin(client, requestURL);
+    http.addHeader("Content-Type", "application/json");  // Set header
+    int httpResponseCode = http.PUT("");                 // Empty body since PUT updates last_active
+    Serial.print("HTTP Response Code  fdsfds: ");
+    Serial.println(httpResponseCode);
+    if (httpResponseCode > 0) {
+      //Serial.print("HTTP Response Code: ");
+      //Serial.println(httpResponseCode);
+      String response = http.getString();
+      //Serial.println("Server Response: " + response);
+    } else {
+      //Serial.print("Error on sending PUT request: ");
+      //Serial.println(httpResponseCode);
+    }
+
+    http.end();  // Close connection
+  } else {
+    // digitalWrite(LED2, HIGH);
+    //digitalWrite(LED1, LOW);
+    Serial.println("WiFi Disconnected");
+  }
+}
+
+
+void sendToServer(int slot) {
+  Serial.println("Sending fingerprint data to server...");
+  http.begin(client, Server2 + "register");
+  http.addHeader("Content-Type", "application/json");
+  // Create JSON payload
+  Serial.println(employeeid);
+  StaticJsonDocument<200> jsonDoc;
+  jsonDoc["employee_id"] = employeeid;
+  jsonDoc["machine_id"] = machine_id;
+  jsonDoc["slot"] = slot;
+   Serial.println(employeeid);
+    Serial.println(machine_id);
+     Serial.println(slot);
+  String jsonPayload;
+  Serial.println(jsonPayload);
+  serializeJson(jsonDoc, jsonPayload);
+  // Wait for response
+  delay(500);
+
+  int httpResponseCode = http.POST(jsonPayload);
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Server Response: " + response);
+    updatestattozero();
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+}
+
+void updatestattozero() {
+
+  String url = Server2 + machine_id;  // Replace with your server URL
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+  // Create JSON payload
+  StaticJsonDocument<200> jsonDoc;
+  jsonDoc["stat"] = 0;  // Replace with actual status value
+  jsonDoc["employeeId"] = "";
+  jsonDoc["purpose"] = "";
+  String jsonString;
+  serializeJson(jsonDoc, jsonString);
+
+
+  int httpResponseCode = http.PUT(jsonString);
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Server Response: " + response);
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+}
+
+
+void checkMachineStatus() {
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    WiFiClient client;
+
+    String requestURL = Server + "checkstat/" + machine_id;  // Append machine ID
+
+    http.begin(client, requestURL);
+
+    int httpResponseCode = http.GET();  // Send GET request
+
+    if (httpResponseCode > 0) {
+      String response = http.getString();  // Get response as String
+
+      // Parse JSON response
+      StaticJsonDocument<200> doc;
+      DeserializationError error = deserializeJson(doc, response);
+
+      if (!error) {
+        String stat = doc[0]["stat"];                     // Extract 'stat' value
+        employeeid = doc[0]["employee_id"].as<String>();  // Convert JsonVariant to String
+        String purpose = doc[0]["purpose"];
+
+        Serial.print("Employee ID: ");
+        Serial.println(purpose);
+        Serial.println(stat);
+        if (stat == "1" && purpose == "REG") {
+          isMachineReadyToReg = true;
+          digitalWrite(LED1, HIGH);
+          digitalWrite(LED2, LOW);
+        } else if (stat == "1" && purpose == "DEL") {
+          isMachineReadyToDel = true;
+          idToDel = doc[0]["slot"];
+          digitalWrite(LED1, LOW);
+          digitalWrite(LED2, HIGH);
+        } else {
+          isMachineReadyToReg = false;
+          isMachineReadyToDel = false;
+          digitalWrite(LED1, LOW);
+          digitalWrite(LED2, LOW);
+        }
+      } else {
+        Serial.println("JSON Parsing Error");
+      }
+    } else {
+      Serial.print("Error on sending GET request: ");
+      Serial.println(httpResponseCode);
+    }
+
+    http.end();
+  } else {
+    Serial.println("WiFi Disconnected");
+  }
+}
+
+void deleteFingerprint(int id) {
+  Serial.print("Deleting fingerprint ID ");
+  Serial.println(id);
+
+  uint8_t status = finger.deleteModel(id);
+
+  if (status == FINGERPRINT_OK) {
+    Serial.println("Fingerprint deleted successfully!");
+    digitalWrite(LED1, HIGH);
+    delay(1000);
+    digitalWrite(LED1, LOW);
+    updatestattozero();
+  } else if (status == FINGERPRINT_PACKETRECIEVEERR) {
+    Serial.println("Communication error!");
+  } else if (status == FINGERPRINT_BADLOCATION) {
+    Serial.println("Invalid ID number!");
+  } else if (status == FINGERPRINT_FLASHERR) {
+    Serial.println("Error writing to flash memory!");
+  } else {
+    Serial.println("Unknown error!");
+  }
+}
+
+
+
+void getLastSlot() {
+  String url = Server2 + "maxslot?machine_id=" + machine_id;  // Replace with your server URL
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+
+  int httpResponseCode = http.GET();
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Server Response: " + response);
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      slot = doc["maxslot"];  // Extract 'stat' value
+      Serial.print("Enrolling fingerprint at ID: ");
+      Serial.println(slot);
+      //employeeid = doc[0]["employee_id"].as<String>();  // Convert JsonVariant to String
+    } else {
+      Serial.println("JSON Parsing Error");
+    }
+
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+}
+
+void enrollFingerprint() {
+
+  getLastSlot();
+  delay(2000);
+  Serial.println("Place your finger on the scanner...");
+  while (finger.getImage() != FINGERPRINT_OK) {
+    delay(100);
+  }
+  if (finger.image2Tz(1) != FINGERPRINT_OK) {
+    Serial.println("Error converting image!");
+    return;
+  }
+
+  Serial.println("Remove finger...");
+  delay(2000);
+  while (finger.getImage() == FINGERPRINT_OK) {}
+  Serial.println("Place the same finger again...");
+
+  while (finger.getImage() != FINGERPRINT_OK) {
+    delay(100);
+  }
+  if (finger.image2Tz(2) != FINGERPRINT_OK) {
+    Serial.println("Error converting second image!");
+    return;
+  }
+
+  if (finger.createModel() != FINGERPRINT_OK) {
+    Serial.println("Error creating fingerprint model!");
+    return;
+  }
+
+  if (finger.storeModel(slot) == FINGERPRINT_OK) {
+    Serial.println("Fingerprint enrolled successfully!");
+    digitalWrite(LED1, HIGH);
+    delay(1000);
+    digitalWrite(LED1, LOW);
+    sendToServer(slot);
+
+  } else {
+    Serial.println("Failed to store fingerprint!");
+    digitalWrite(LED2, HIGH);
+    delay(1000);
+    digitalWrite(LED2, LOW);
+  }
+}
+
+
+
+void verifyFingerprint() {
+  Serial.println("Place your finger on the scanner...");
+  unsigned long startTime = millis();  // Get current time
+  while (finger.getImage() != FINGERPRINT_OK) {
+    if (millis() - startTime > 3000) {  // Timeout after 3 seconds
+      Serial.println("Timeout! No finger detected.");
+      return;
+    }
+    delay(100);
+  }
+  if (finger.image2Tz(1) != FINGERPRINT_OK) {
+    Serial.println("Error converting image!");
+    return;
+  }
+  if (finger.fingerFastSearch() == FINGERPRINT_OK) {
+    Serial.print("Fingerprint matched! ID: ");
+    Serial.println(finger.fingerID);
+    getEmployeeId(finger.fingerID);
+    digitalWrite(LED1, HIGH);
+    delay(1000);
+    digitalWrite(LED1, LOW);
+  } else {
+    Serial.println("Fingerprint not found!");
+    digitalWrite(LED2, HIGH);
+    delay(1000);
+    digitalWrite(LED2, LOW);
+  }
+}
+
+void getEmployeeId(int slot) {
+  String url = Server2 + "getEmployeeId?machine_id=" + machine_id + "&slot=" + slot;  // Replace with your server URL
+  Serial.println(url);
+  http.begin(client, url);
+  http.addHeader("Content-Type", "application/json");
+
+
+  int httpResponseCode = http.GET();
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Server Response: " + response);
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      String emp = doc["employee_id"];
+      Serial.print("Welcome ");
+      Serial.println(emp);
+      clockinout(emp);
+      //employeeid = doc[0]["employee_id"].as<String>();  // Convert JsonVariant to String
+    } else {
+      Serial.println("JSON Parsing Error");
+    }
+
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+}
+
+void clockinout(String emp) 
+{
+  http.begin(client, "http://192.168.0.100:5000/api/clock-status/" + machine_id);
+  http.addHeader("Content-Type", "application/json");
+
+
+  int httpResponseCode = http.GET();
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      ClockStatus = doc["status"].as<String>();  // Extract 'stat' value
+      Serial.println(ClockStatus);
+      
+    } else {
+      Serial.println("JSON Parsing Error");
+    }
+
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+
+
+  Serial.println("Sending fingerprint data to server...");
+  http.begin(client, Server2 + "clockinout");
+  http.addHeader("Content-Type", "application/json");
+  // Create JSON payload
+  StaticJsonDocument<200> jsonDoc;
+  jsonDoc["employee_id"] = emp;
+  jsonDoc["machine_id"] = machine_id;
+  jsonDoc["status"] = ClockStatus;
+
+  String jsonPayload;
+  serializeJson(jsonDoc, jsonPayload);
+  // Wait for response
+  delay(500);
+
+  httpResponseCode = http.POST(jsonPayload);
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Server Response: " + response);
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+}
+
+void deleteAllFingerprints() {
+  uint8_t result = finger.emptyDatabase();
+  if (result == FINGERPRINT_OK) {
+    Serial.println("All fingerprints deleted successfully.");
+  } else {
+    Serial.print("Failed to delete fingerprints. Error code: ");
+    Serial.println(result);
+  }
+}
+
+
+void MachineName() {
+  http.begin(client, GetMachineId);
+  http.addHeader("Content-Type", "application/json");
+
+
+  int httpResponseCode = http.GET();
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+
+    StaticJsonDocument<200> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (!error) {
+      machine_id = doc["machine_name"].as<String>();  // Extract 'stat' value
+      Serial.println(machine_id);
+      
+    } else {
+      Serial.println("JSON Parsing Error");
+    }
+
+  } else {
+    Serial.println("Error sending data: " + String(httpResponseCode));
+  }
+
+  http.end();
+
+}
+
+
+void loop() {
+  static unsigned long lastPutTime = 0;
+  static unsigned long lastCheckTime = 0;
+  unsigned long currentMillis = millis();
+  if (isMachineReadyToReg) {
+    enrollFingerprint();
+  } else if (isMachineReadyToDel) {
+    deleteFingerprint(idToDel);
+    Serial.println(idToDel);
+  } else {
+    // registerFingerprint2();
+    verifyFingerprint();
+  }
+
+  // Run sendPUTRequest() every 30 seconds (30000 ms)
+  if (currentMillis - lastPutTime >= 30000) {
+    lastPutTime = currentMillis;
+    sendPUTRequest();
+  }
+
+  // Run checkMachineStatus() every 2 seconds (2000 ms)
+  if (currentMillis - lastCheckTime >= 2000) {
+    lastCheckTime = currentMillis;
+    checkMachineStatus();
+  }
+  delay(1000);
+}
