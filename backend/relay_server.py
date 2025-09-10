@@ -1,3 +1,6 @@
+from watchdog.observers import Observer
+from watchdog.events import FileSystemEventHandler
+
 from flask import Flask, request, jsonify
 import pyodbc
 import os
@@ -6,24 +9,123 @@ import base64
 import time
 from flask_cors import CORS
 import hashlib
+import ctypes
+from ctypes import wintypes
+
+ENV_PATH = r"\\192.168.52.15\share_apk$\share_kontrak\p.env"
+
+class EnvFileHandler(FileSystemEventHandler):
+    def on_modified(self, event):
+        if event.src_path.endswith("p.env"):
+            try:
+                token = impersonate("HCSERVER", "MHCL-01", "653565")
+                try:
+                    load_dotenv(ENV_PATH, override=True)
+                    print("🔄 Reloaded .env after modification")
+                finally:
+                    revert(token)
+            except Exception as e:
+                print("⚠️ Failed to reload central .env on change:", e)
+
+def start_watcher():
+    observer = Observer()
+    observer.schedule(EnvFileHandler(), path=os.path.dirname(ENV_PATH), recursive=False)
+    observer.start()
+
+    # Run watcher in background
+    import threading
+    t = threading.Thread(target=observer.join)
+    t.daemon = True
+    t.start()
+
+# --- Windows impersonation setup ---
+advapi32 = ctypes.WinDLL('advapi32', use_last_error=True)
+
+LogonUser = advapi32.LogonUserW
+LogonUser.argtypes = [
+    wintypes.LPWSTR, wintypes.LPWSTR, wintypes.LPWSTR,
+    wintypes.DWORD, wintypes.DWORD, ctypes.POINTER(wintypes.HANDLE)
+]
+LogonUser.restype = wintypes.BOOL
+
+ImpersonateLoggedOnUser = advapi32.ImpersonateLoggedOnUser
+ImpersonateLoggedOnUser.argtypes = [wintypes.HANDLE]
+ImpersonateLoggedOnUser.restype = wintypes.BOOL
+
+RevertToSelf = advapi32.RevertToSelf
+RevertToSelf.argtypes = []
+RevertToSelf.restype = wintypes.BOOL
+
+
+def impersonate(domain, username, password):
+    """Impersonate a Windows account with given credentials"""
+    LOGON32_LOGON_NEW_CREDENTIALS = 9
+    LOGON32_PROVIDER_WINNT50 = 3
+    token = wintypes.HANDLE()
+    if not LogonUser(username, domain, password,
+                     LOGON32_LOGON_NEW_CREDENTIALS,
+                     LOGON32_PROVIDER_WINNT50,
+                     ctypes.byref(token)):
+        raise ctypes.WinError(ctypes.get_last_error())
+    if not ImpersonateLoggedOnUser(token):
+        raise ctypes.WinError(ctypes.get_last_error())
+    return token
+
+
+def revert(token):
+    """Revert impersonation and close handle"""
+    RevertToSelf()
+    ctypes.windll.kernel32.CloseHandle(token)
+
+
+# --- Load centralized .env under impersonation ---
+try:
+    token = impersonate("HCSERVER", "MHCL-01", "653565")
+    try:
+        load_dotenv(ENV_PATH, override=True)
+        start_watcher()
+    finally:
+        revert(token)
+except Exception as e:
+    print("⚠️ Failed to impersonate or load central .env:", e)
+    print("Falling back to local .env")
+    load_dotenv(override=True)
+
 
 app = Flask(__name__)
 CORS(app)  # Enable CORS for all routes
 
-load_dotenv()
 
 
-# Load DB credentials from .env
-server = os.getenv('DB_SERVER')
-database = os.getenv('DB_DATABASE')
-username = os.getenv('DB_USERNAME')
-password = os.getenv('DB_PASSWORD')
-driver = os.getenv('DB_DRIVER')
+
+
+def reload_env():
+    load_dotenv("\\\\192.168.52.15\\share_apk$\\share_kontrak\\p.env", override=True)
+
+
 
 def get_conn():
-    return pyodbc.connect(
-        f'DRIVER={driver};SERVER={server};DATABASE={database};UID={username};PWD={password}'
+    server = os.getenv('DB_SERVER')
+    database = os.getenv('DB_DATABASE')
+    username = os.getenv('DB_USERNAME')
+    password = os.getenv('DB_PASSWORD')
+    driver = os.getenv('DB_DRIVER')
+
+    conn_str = (
+        f"DRIVER={{{driver}}};"
+        f"SERVER={server};"
+        f"DATABASE={database};"
+        f"UID={username};"
+        f"PWD={password}"
     )
+
+    # ⚠️ Don't log password in real apps, just for debugging
+    safe_conn_str = conn_str.replace(password, "*****") if password else conn_str
+    print(f"🔌 Attempting connection with: {safe_conn_str}")
+
+    return pyodbc.connect(conn_str)
+
+
 
 def hash_password(password, salt):
     # Convert the password to bytes and combine with salt
@@ -93,6 +195,17 @@ def search_machine_employees(id):
 #         return jsonify({"machine_name": name})
 #     except Exception as e:
 #         return jsonify({"error": str(e)}), 500
+
+@app.route("/test-db", methods=["GET"])
+def test_db():
+    return {
+        "DB_SERVER": os.getenv("DB_SERVER"),
+        "DB_DATABASE": os.getenv("DB_DATABASE"),
+        "DB_USERNAME": os.getenv("DB_USERNAME"),
+        # ⚠️ Don't expose password in real apps, just for test
+        "DB_PASSWORD": os.getenv("DB_PASSWORD"),
+        "DB_DRIVER": os.getenv("DB_DRIVER")
+    }
 
 
 @app.route('/api/machine-name', methods=['GET'])
